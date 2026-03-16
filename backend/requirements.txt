@@ -1,6 +1,6 @@
 fastapi==0.115.8
 uvicorn[standard]==0.34.0
-torch==2.6.0
+torch>=2.0.0
 torchvision
 pydantic[email]>=2.11.7
 pydantic-settings>=2.0.0
