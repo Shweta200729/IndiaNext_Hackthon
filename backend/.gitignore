@@ -10,6 +10,9 @@ __pycache__/
 # Environment variables
 .env
 
+# MLflow
+mlflow.db
+
 # IDE
 .vscode/
 .idea/
