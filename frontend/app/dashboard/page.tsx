@@ -10,7 +10,16 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, Legend, Area, ComposedChart, Bar
 } from "recharts";
-import { fetchMetrics, MetricsResponse } from "@/lib/api";
+import {
+    fetchMetrics,
+    MetricsResponse,
+    fetchLeaderboard,
+    LeaderboardEntry,
+    fetchExperiments,
+    ExperimentEntry,
+    fetchTrainHistory,
+    TrainHistoryRow
+} from "@/lib/api";
 
 interface MetricsData {
     current_version: number;
@@ -27,6 +36,9 @@ interface BlockchainData {
 export default function OverviewPage() {
     const [data, setData] = useState<MetricsData | null>(null);
     const [blockchainData, setBlockchainData] = useState<BlockchainData | null>(null);
+    const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+    const [experiments, setExperiments] = useState<ExperimentEntry[]>([]);
+    const [trainHistory, setTrainHistory] = useState<TrainHistoryRow[]>([]);
     const [loading, setLoading] = useState(true);
     // Upload section state
     const [uploadClientId, setUploadClientId] = useState("");
@@ -56,6 +68,18 @@ export default function OverviewPage() {
                 const bcJson = await bcRes.json();
                 setBlockchainData(bcJson);
             }
+
+            // Fetch Leaderboard
+            const lb = await fetchLeaderboard();
+            if (lb) setLeaderboard(lb.slice(0, 5));
+
+            // Fetch Experiments
+            const exps = await fetchExperiments(5);
+            if (exps) setExperiments(exps);
+
+            // Fetch Train History
+            const hist = await fetchTrainHistory(100);
+            if (hist) setTrainHistory(hist);
 
             setLastUpdated(new Date());
         } catch (e) {
@@ -520,6 +544,61 @@ export default function OverviewPage() {
                 </CardContent>
             </Card>
 
+            {/* ── Per-Epoch Detailed Training History ─────────────────────────────────── */}
+            <Card className="bg-white border-slate-200 shadow-sm">
+                <CardHeader>
+                    <CardTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 text-green-500" />
+                        Granular Performance — Per-Epoch Training Metrics
+                    </CardTitle>
+                    <p className="text-sm text-slate-400 mt-0.5">Real-time telemetry showing loss reduction across all client nodes during local training rounds.</p>
+                </CardHeader>
+                <CardContent>
+                    <div className="h-64 w-full rounded-xl border border-slate-100 bg-slate-50/50 p-2">
+                        {trainHistory.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={trainHistory}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                    <XAxis
+                                        dataKey="epoch"
+                                        stroke="#94a3b8"
+                                        fontSize={10}
+                                        tickLine={false}
+                                        label={{ value: 'Epoch', position: 'insideBottom', offset: -5, fontSize: 10, fill: '#94a3b8' }}
+                                    />
+                                    <YAxis
+                                        stroke="#94a3b8"
+                                        fontSize={10}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        label={{ value: 'Loss', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
+                                    />
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: "#fff", borderColor: "#e2e8f0", borderRadius: 8 }}
+                                        formatter={(val: any) => [parseFloat(val).toFixed(4), "Loss"]}
+                                    />
+                                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="loss"
+                                        name="Client Loss"
+                                        stroke="#10b981"
+                                        strokeWidth={2}
+                                        dot={false}
+                                        activeDot={{ r: 4 }}
+                                        animationDuration={1500}
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">
+                                Awaiting telemetry from training workers...
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* ── Acceptance Rate Bar Chart ──────────────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card className="bg-white border-slate-200 shadow-sm">
@@ -575,6 +654,81 @@ export default function OverviewPage() {
                                         </tr>
                                     )) : (
                                         <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400">No events yet.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* ── Leaderboard & Experiments Mini-Panels ─────────────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Mini Leaderboard */}
+                <Card className="bg-white border-slate-200 shadow-sm">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-bold text-slate-900 flex items-center justify-between">
+                            Top Contributors
+                            <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full uppercase tracking-wider">Live Ranking</span>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="overflow-hidden">
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-y border-slate-100">
+                                    <tr>
+                                        <th className="px-4 py-2">Rank</th>
+                                        <th className="px-4 py-2">Node</th>
+                                        <th className="px-4 py-2 text-right">Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {leaderboard.length > 0 ? leaderboard.map((l, i) => (
+                                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="px-4 py-2.5 font-bold text-slate-400">#{l.rank}</td>
+                                            <td className="px-4 py-2.5 font-semibold text-slate-700">{l.contributor}</td>
+                                            <td className="px-4 py-2.5 text-right font-mono text-indigo-600">+{l.score}</td>
+                                        </tr>
+                                    )) : (
+                                        <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">No contributors yet.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Mini Experiments */}
+                <Card className="bg-white border-slate-200 shadow-sm">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base font-bold text-slate-900 flex items-center justify-between">
+                            Recent Experiments
+                            <span className="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full uppercase tracking-wider">Tracking Active</span>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="overflow-hidden">
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-y border-slate-100">
+                                    <tr>
+                                        <th className="px-4 py-2">Model</th>
+                                        <th className="px-4 py-2 text-right">Accuracy</th>
+                                        <th className="px-4 py-2 text-right">Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {experiments.length > 0 ? experiments.map((ex, i) => (
+                                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="px-4 py-2.5 font-medium text-slate-700">Round {ex.round}</td>
+                                            <td className="px-4 py-2.5 text-right font-bold text-green-600">
+                                                {ex.val_accuracy != null ? `${(ex.val_accuracy * 100).toFixed(1)}%` : "N/A"}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right text-slate-400">
+                                                {new Date(ex.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </td>
+                                        </tr>
+                                    )) : (
+                                        <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic">No experiments tracked.</td></tr>
                                     )}
                                 </tbody>
                             </table>

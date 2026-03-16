@@ -58,6 +58,95 @@ def fedavg(updates: List[WeightsDict]) -> WeightsDict:
 
 
 # ---------------------------------------------------------------------------
+# Weighted FedAvg (Meta-Learning Layer)
+# ---------------------------------------------------------------------------
+
+def weighted_fedavg(
+    updates: List[WeightsDict],
+    scores: Optional[List[float]] = None,
+    min_score_threshold: float = 0.0,
+) -> WeightsDict:
+    """
+    Performance-Weighted Federated Averaging (Meta-Learning Layer).
+
+    Each client update is weighted by its validation accuracy score before
+    aggregation. Updates with score below ``min_score_threshold`` are
+    REJECTED and excluded from aggregation entirely.
+
+    If scores are not provided, falls back to standard (equal-weight) FedAvg.
+
+    Args:
+        updates: Non-empty list of client state dicts (CPU tensors).
+        scores:  Per-client validation accuracy scores in [0, 1].
+                 Must be the same length as updates.
+        min_score_threshold: Minimum acceptable validation accuracy.
+                             Updates below this value are silently dropped.
+
+    Returns:
+        Weighted-averaged state dict.
+
+    Raises:
+        ValueError: If updates list is empty or all updates are rejected.
+    """
+    if not updates:
+        raise ValueError("weighted_fedavg: cannot aggregate an empty list.")
+
+    if scores is None or len(scores) != len(updates):
+        logger.debug("[WeightedFedAvg] No valid scores provided — falling back to FedAvg.")
+        return fedavg(updates)
+
+    # ── Filter updates below the quality threshold ────────────────────────
+    accepted_pairs = [
+        (w, s) for w, s in zip(updates, scores)
+        if s is not None and s >= min_score_threshold
+    ]
+
+    rejected_count = len(updates) - len(accepted_pairs)
+    if rejected_count > 0:
+        logger.warning(
+            f"[WeightedFedAvg] Rejected {rejected_count}/{len(updates)} updates "
+            f"with score < {min_score_threshold:.3f}."
+        )
+
+    if not accepted_pairs:
+        raise ValueError(
+            f"weighted_fedavg: all {len(updates)} updates failed the quality "
+            f"threshold ({min_score_threshold:.3f}). Cannot aggregate."
+        )
+
+    accepted_updates = [w for w, _ in accepted_pairs]
+    accepted_scores = [s for _, s in accepted_pairs]
+
+    # Normalize scores to sum to 1.0 (softmax-style weighting)
+    total = sum(accepted_scores) or 1.0
+    weights = [s / total for s in accepted_scores]
+
+    logger.info(
+        f"[WeightedFedAvg] Aggregating {len(accepted_updates)} updates "
+        f"with weights: {[round(w, 3) for w in weights]}"
+    )
+
+    # ── Weighted average layer-by-layer ────────────────────────────────────
+    aggregated: WeightsDict = {}
+    for key in accepted_updates[0].keys():
+        tensors = [u[key].cpu() for u in accepted_updates if key in u]
+        if not tensors:
+            continue
+        orig_dtype = tensors[0].dtype
+        weighted_sum = torch.zeros_like(tensors[0].float())
+        for tensor, w in zip(tensors, weights):
+            weighted_sum += tensor.float() * w
+        aggregated[key] = weighted_sum.to(orig_dtype)
+
+    logger.debug(
+        f"[WeightedFedAvg] Done. Effective updates={len(accepted_updates)}, rejected={rejected_count}."
+    )
+    return aggregated
+
+
+
+
+# ---------------------------------------------------------------------------
 # Trimmed Mean
 # ---------------------------------------------------------------------------
 

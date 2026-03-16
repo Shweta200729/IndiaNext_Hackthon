@@ -278,3 +278,54 @@ export async function sendCollabMessage(sessionId: string, senderId: number, con
     const res = await post<{ data: ChatMessage }>(`/collab/session/${sessionId}/messages`, { sender_id: senderId, content });
     return res?.data ?? null;
 }
+
+// ─── New feature APIs ─────────────────────────────────────────────────────────
+
+export interface LeaderboardEntry {
+    rank: number;
+    contributor: string;
+    accepted: number;
+    rejected: number;
+    total: number;
+    score: number;
+}
+
+export interface ExperimentEntry {
+    run_id: string | null;
+    contributor: string;
+    dataset: string;
+    round: string | number;
+    method: string;
+    accuracy: number | null;
+    loss: number | null;
+    val_accuracy: number | null;
+    timestamp: string;
+}
+
+export interface TrainHistoryRow {
+    client_id: string;
+    round: number;
+    epoch: number;
+    loss: number | null;
+    accuracy: number | null;
+    created_at?: string;
+}
+
+/** GET /fl/leaderboard — contributor ranking */
+export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
+    const res = await get<{ leaderboard: LeaderboardEntry[] }>("/leaderboard");
+    return res?.leaderboard ?? [];
+}
+
+/** GET /fl/experiments?limit=N — MLflow experiment history */
+export async function fetchExperiments(limit = 20): Promise<ExperimentEntry[]> {
+    const res = await get<{ experiments: ExperimentEntry[] }>(`/experiments?limit=${limit}`);
+    return res?.experiments ?? [];
+}
+
+/** GET /fl/train_history?limit=N — per-epoch training stats */
+export async function fetchTrainHistory(limit = 200): Promise<TrainHistoryRow[]> {
+    const res = await get<{ history: TrainHistoryRow[] }>(`/train_history?limit=${limit}`);
+    return res?.history ?? [];
+}
+

@@ -579,7 +579,27 @@ async def _aggregate_and_update(updates: List[Tuple[str, Dict]]) -> Dict[str, fl
             else " | evaluation not available"
         )
     )
+
+    # ── MLflow experiment tracking ────────────────────────────────────────
+    try:
+        from server.mlflow_tracker import log_fl_round
+        contributors = [cid for cid, _ in updates]
+        contrib_str = ",".join(sorted(set(contributors))) or "unknown"
+        _acc = eval_metrics.get("accuracy", 0.0) if eval_metrics else 0.0
+        _loss = eval_metrics.get("loss", 0.0) if eval_metrics else 0.0
+        log_fl_round(
+            round_num=current_version_num,
+            contributor=contrib_str,
+            dataset=cfg.DATASET_NAME or "uploaded_csv",
+            accuracy=_acc,
+            loss=_loss,
+            method=method_name,
+        )
+    except Exception as _mlf_err:
+        logger.warning(f"[MLflow] Logging failed (non-fatal): {_mlf_err}")
+
     return result_summary
+
 
 
 def _run_aggregation_sync(batch: List[Tuple]):
@@ -2088,3 +2108,236 @@ async def get_client_weights(client_id: str):
 from server.collab import collab_router
 
 app.include_router(collab_router, prefix="/collab", tags=["collaboration"])
+
+
+# ===========================================================================
+# RAG CHATBOT ENDPOINT
+# ===========================================================================
+
+class RagChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None  # For future multi-turn support
+
+
+@app.post("/chat")
+async def rag_chat(request: RagChatRequest):
+    """
+    RAG-powered chatbot endpoint.
+
+    Answers platform questions about federated learning, datasets,
+    experiments, and how to contribute. Backed by ChromaDB + sentence-transformers.
+    Falls back to rule-based responses if RAG is unavailable.
+    """
+    msg = request.message.strip()
+    if not msg:
+        raise HTTPException(400, "Message cannot be empty.")
+
+    # Try RAG first
+    try:
+        from server.rag import query_rag
+        answer = query_rag(msg)
+        return {"reply": answer, "source": "rag"}
+    except Exception as e:
+        logger.warning(f"[Chat] RAG unavailable ({e}), using rule-based fallback.")
+
+    # Rule-based fallback (original simple chatbot logic)
+    msg_lower = msg.lower()
+    if "train" in msg_lower:
+        reply = (
+            "To train a model, go to the 'Dashboard' tab, upload a CSV dataset, "
+            "and the backend will train a model locally on your data. "
+            "You can then download the .pt weights."
+        )
+    elif "federated" in msg_lower:
+        reply = (
+            "Federated Learning is a decentralized ML approach where models are trained "
+            "on local devices and only weights are shared with the global server — "
+            "your raw data never leaves your device."
+        )
+    elif "upload" in msg_lower:
+        reply = (
+            "Upload your PyTorch (.pt) weight file via POST /fl/update or use the "
+            "Dashboard → Contribute tab. Only .pt files ≤ 200 MB are accepted."
+        )
+    elif "dataset" in msg_lower or "kaggle" in msg_lower:
+        reply = (
+            "Use the Dataset Discovery feature to search Kaggle datasets by task type "
+            "(computer vision, NLP, or tabular). Try GET /fl/datasets/search?q=nlp."
+        )
+    elif "experiment" in msg_lower or "mlflow" in msg_lower:
+        reply = (
+            "All training experiments are tracked via MLflow. Each round logs: "
+            "contributor, dataset, accuracy, loss, and training round. "
+            "View history at GET /fl/experiments."
+        )
+    elif "leaderboard" in msg_lower:
+        reply = (
+            "The contributor leaderboard ranks participants by total accepted updates. "
+            "View it at GET /fl/leaderboard."
+        )
+    else:
+        reply = (
+            "I'm the IndiaNext AI Assistant. I can help with: "
+            "federated learning basics, how to train/upload models, "
+            "dataset discovery, experiment tracking, and collaboration."
+        )
+
+    return {"reply": reply, "source": "rule-based"}
+
+
+# ===========================================================================
+# DATASET DISCOVERY (KAGGLE)
+# ===========================================================================
+
+@app.get("/datasets/search")
+async def search_datasets(q: str = "tabular", limit: int = 5):
+    """
+    Search Kaggle datasets by task type.
+
+    Query params:
+      - q: task description — 'computer vision', 'nlp', or 'tabular'
+      - limit: max results (default 5)
+
+    Returns:
+      List of {title, description, url, size, task}
+    """
+    try:
+        from server.kaggle_search import search_datasets as _search
+        results = _search(query=q, max_results=min(limit, 20))
+        return {"query": q, "results": results, "count": len(results)}
+    except Exception as e:
+        logger.error(f"[Datasets] Search failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Dataset search failed: {e}")
+
+
+# ===========================================================================
+# CONTRIBUTOR LEADERBOARD
+# ===========================================================================
+
+@app.get("/leaderboard")
+async def get_leaderboard():
+    """
+    Returns contributor leaderboard ranked by accepted model updates.
+
+    Data source: Supabase client_updates table (or in-memory fallback).
+    """
+    # Build leaderboard from in-memory client updates
+    from collections import defaultdict
+    scores: dict = defaultdict(lambda: {"accepted": 0, "rejected": 0, "total": 0})
+
+    rows = list(_mem_client_updates)
+    if storage:
+        try:
+            db_rows = storage.read_recent_client_updates()
+            if db_rows:
+                rows = db_rows
+        except Exception as e:
+            logger.warning(f"[Leaderboard] DB read failed: {e}")
+
+    for row in rows:
+        cid = row.get("client_id", "Unknown")
+        status = row.get("status", "REJECT")
+        if status in ("ACCEPT", "ACCEPTED"):   # ← both spellings accepted
+            scores[cid]["accepted"] += 1
+        else:
+            scores[cid]["rejected"] += 1
+        scores[cid]["total"] += 1
+
+    leaderboard = [
+        {
+            "rank": 0,
+            "contributor": cid,
+            "accepted": v["accepted"],
+            "rejected": v["rejected"],
+            "total": v["total"],
+            "score": v["accepted"] * 10 - v["rejected"] * 5,
+        }
+        for cid, v in scores.items()
+    ]
+    leaderboard.sort(key=lambda x: x["score"], reverse=True)
+    for i, entry in enumerate(leaderboard, 1):
+        entry["rank"] = i
+
+    return {"leaderboard": leaderboard, "count": len(leaderboard)}
+
+
+# ===========================================================================
+# TRAINING HISTORY  (per-epoch loss/accuracy from csv_trainer)
+# ===========================================================================
+
+@app.get("/train_history")
+async def get_train_history(limit: int = 200):
+    """
+    Returns per-epoch training history for all clients.
+    Sourced from: Supabase train_history table → in-memory fallback.
+    """
+    rows = list(_mem_train_history)
+    if storage:
+        try:
+            db_rows = storage.read_recent_train_history(limit=limit)
+            if db_rows:
+                rows = db_rows
+        except Exception as e:
+            logger.warning(f"[TrainHistory] DB read failed: {e}")
+    return {"history": rows[-limit:], "count": len(rows)}
+
+
+
+
+# ===========================================================================
+# EXPERIMENT HISTORY (MLflow)
+# ===========================================================================
+
+@app.get("/experiments")
+async def get_experiments(limit: int = 20):
+    """
+    Returns recent experiment runs tracked by MLflow.
+
+    Falls back to in-memory log if MLflow is unavailable.
+    """
+    try:
+        from server.mlflow_tracker import get_recent_experiments
+        experiments = get_recent_experiments(limit=limit)
+        return {"experiments": experiments, "count": len(experiments)}
+    except Exception as e:
+        logger.error(f"[Experiments] Failed: {e}", exc_info=True)
+        raise HTTPException(500, f"Could not retrieve experiments: {e}")
+
+
+# ===========================================================================
+# RAG KNOWLEDGE-BASE MANAGEMENT
+# ===========================================================================
+
+@app.post("/rag/rebuild")
+async def rebuild_rag_kb():
+    """
+    (Admin) Rebuild the ChromaDB RAG knowledge base from scratch.
+
+    Useful after adding new documentation or experiment data.
+    """
+    try:
+        # Reset singletons
+        from server import rag as _rag_module
+        _rag_module._vectorstore = None
+        _rag_module._retriever = None
+
+        # Pull dataset metadata from Supabase for additional context
+        extra_docs = []
+        if storage:
+            try:
+                vr = storage.read_recent_versions()
+                if vr:
+                    extra_docs.append(
+                        f"The platform currently has {len(vr)} model versions. "
+                        f"The latest version number is {vr[-1].get('version_num', '?')}."
+                    )
+            except Exception:
+                pass
+
+        from server.rag import get_retriever
+        get_retriever(extra_docs=extra_docs or None)
+        return {"status": "ok", "message": "RAG knowledge base rebuilt successfully."}
+    except Exception as e:
+        logger.error(f"[RAG] Rebuild failed: {e}", exc_info=True)
+        raise HTTPException(500, f"RAG rebuild failed: {e}")
+

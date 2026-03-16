@@ -43,6 +43,49 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
+@app.post("/agent/chat")
+async def agent_chat(request: ChatRequest):
+    msg = request.message.lower()
+    if "train" in msg:
+        reply = "To train a model, go to the 'Playground' tab, configure your parameters, and start a simulation. You can also upload your own .pt weights in the 'Upload' tab."
+    elif "federated" in msg:
+        reply = "Federated Learning is a decentralized ML approach where models are trained on local devices and only weights are shared with the global server."
+    elif "upload" in msg:
+        reply = "You can upload PyTorch (.pt) files in the 'Contribute' tab. Make sure your model architecture matches the global MNIST shape (1, 28, 28)."
+    else:
+        reply = "I am the AsyncFL AI Assistant. I can help you with questions about federated learning, model training, and weight uploads."
+    
+    return {"reply": reply}
+
+
+@app.post("/upload_weights")
+async def upload_weights(
+    file: UploadFile = File(...),
+    client_id: str = Form("mobile_user"),
+):
+    # This acts as a simplified wrapper for the mobile app
+    # In a real scenario, we'd call the /fl/update logic or similar
+    # For now, we'll just save it and return success
+    
+    # Save to a temporary or data directory
+    upload_dir = os.path.join(os.path.dirname(__file__), "data", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    file_path = os.path.join(upload_dir, file.filename)
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+        
+    return {
+        "status": "ACCEPTED",
+        "message": f"Weights from {client_id} uploaded successfully.",
+        "file": file.filename
+    }
+
+
 @app.post("/api/auth/signup")
 async def signup(request: SignupRequest):
     if request.password != request.confirm_password:

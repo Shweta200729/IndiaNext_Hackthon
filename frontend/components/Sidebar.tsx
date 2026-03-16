@@ -11,7 +11,11 @@ import {
     LineChart,
     TerminalSquare,
     Users2,
-    Swords
+    Swords,
+    Trophy,
+    FlaskConical,
+    Database,
+    Bot,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -27,7 +31,12 @@ export function Sidebar() {
         { name: "Collaborate", href: "/dashboard/collaborate", icon: Users2 },
         { name: "Evaluation", href: "/dashboard/evaluation", icon: LineChart },
         { name: "Logs", href: "/dashboard/logs", icon: TerminalSquare },
+        { name: "Leaderboard", href: "/dashboard/leaderboard", icon: Trophy },
+        { name: "Experiments", href: "/dashboard/experiments", icon: FlaskConical },
+        { name: "Datasets", href: "/dashboard/datasets", icon: Database },
+        { name: "AI Chat", href: "/dashboard/chat", icon: Bot },
     ];
+
 
     const [escrowBalance, setEscrowBalance] = useState<number>(0);
     const [pendingInvites, setPendingInvites] = useState<number>(0);
