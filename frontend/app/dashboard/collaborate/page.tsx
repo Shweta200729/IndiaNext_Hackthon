@@ -10,6 +10,7 @@ import {
     respondToCollabRequest,
     fetchCollabMessages,
     sendCollabMessage,
+    uploadDataset,
     CollabUser,
     CollabSession,
     ChatMessage
@@ -43,6 +44,11 @@ export default function CollaboratePage() {
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [newMessage, setNewMessage] = useState("");
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
+    // Upload State
+    const [isUploading, setIsUploading] = useState<string | null>(null);
+    const [uploadingSessionId, setUploadingSessionId] = useState<string | null>(null);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const loadData = useCallback(async () => {
         if (!currentUserId) return;
@@ -134,6 +140,45 @@ export default function CollaboratePage() {
                 return [...prev, sentMsg];
             });
         }
+    };
+
+    const handleFileSubmit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !uploadingSessionId || !currentUserId) return;
+
+        setIsUploading(uploadingSessionId);
+        try {
+            const userJson = localStorage.getItem("user");
+            const userName = userJson ? JSON.parse(userJson).name : "unknown_collab";
+            
+            const result = await uploadDataset(
+                userName, 
+                file, 
+                5, // Default epochs for collab
+                undefined, 
+                uploadingSessionId, 
+                currentUserId
+            );
+            
+            if (result) {
+                alert("Collaboration weights submitted successfully! They will be aggregated once both partners submit.");
+                loadData();
+            } else {
+                alert("Failed to submit weights. Check backend console.");
+            }
+        } catch (err) {
+            console.error("Upload failed", err);
+            alert("An error occurred during upload.");
+        } finally {
+            setIsUploading(null);
+            setUploadingSessionId(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    };
+
+    const triggerUpload = (sessionId: string) => {
+        setUploadingSessionId(sessionId);
+        fileInputRef.current?.click();
     };
 
     // Derived state
@@ -285,9 +330,13 @@ export default function CollaboratePage() {
                                                     <BoxIcon className="w-4 h-4 opacity-80" />
                                                     {selectedSessionId === s.id ? 'Close Chat' : 'Open Chat'}
                                                 </button>
-                                                <button className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2">
-                                                    <Zap className="w-4 h-4 opacity-80" />
-                                                    Submit Weights
+                                                <button 
+                                                    onClick={() => triggerUpload(s.id)}
+                                                    disabled={isUploading === s.id}
+                                                    className={`flex-1 py-2 font-semibold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 ${isUploading === s.id ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+                                                >
+                                                    <Zap className={`w-4 h-4 opacity-80 ${isUploading === s.id ? 'animate-spin' : ''}`} />
+                                                    {isUploading === s.id ? 'Uploading...' : 'Submit Weights'}
                                                 </button>
                                             </div>
                                         </div>
@@ -428,6 +477,15 @@ export default function CollaboratePage() {
                 </div>
 
             </div>
+
+            {/* Hidden File Input */}
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".csv"
+                onChange={handleFileSubmit}
+            />
         </div>
     );
 }

@@ -35,24 +35,12 @@ export default function ClientsPage() {
     const [isTraining, setIsTraining] = useState(false);
     const [trainMsg, setTrainMsg] = useState<{ type: "ok" | "err" | "info"; msg: string } | null>(null);
     const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null);
-    const [modelVersions, setModelVersions] = useState<ModelVersion[]>([]);
-    const [selectedVersionId, setSelectedVersionId] = useState<string>("");
     const [isTestingDataset, setIsTestingDataset] = useState(false);
     const [isDatasetValid, setIsDatasetValid] = useState(false);
     const [testResult, setTestResult] = useState<{ valid: boolean; topic: string; msg: string } | null>(null);
     const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // ── Init ──────────────────────────────────────────────────────────────────
     useEffect(() => {
-        const loadInitialData = async () => {
-            const versions = await fetchVersions();
-            if (versions && versions.length > 0) {
-                setModelVersions(versions);
-                setSelectedVersionId(String(versions[0].id));
-            }
-        };
-        loadInitialData();
-
         const stored = localStorage.getItem("user");
         let name = `EdgeNode-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
         if (stored) {
@@ -180,14 +168,10 @@ export default function ClientsPage() {
             setTrainMsg({ type: "err", msg: "Please enter your client ID." });
             return;
         }
-        if (!selectedVersionId) {
-            setTrainMsg({ type: "err", msg: "Please select a base model version." });
-            return;
-        }
         setIsTraining(true);
-        setTrainMsg({ type: "info", msg: `Uploading dataset and fine-tuning version ${selectedVersionId} for ${trainEpochs} epoch(s)…` });
+        setTrainMsg({ type: "info", msg: `Uploading dataset and fine-tuning for ${trainEpochs} epoch(s)…` });
         try {
-            const result = await uploadDataset(trainClientId.trim(), trainFile, trainEpochs, selectedVersionId);
+            const result = await uploadDataset(trainClientId.trim(), trainFile, trainEpochs);
             if (result) {
                 setTrainMsg({
                     type: "ok",
@@ -245,33 +229,10 @@ export default function ClientsPage() {
 
                         {/* ── Left: Upload form ─────────────────────────────── */}
                         <div className="flex flex-col gap-4">
-                            {/* Step 1: Base Model Selection */}
-                            <div className="flex flex-col gap-1">
-                                <span className="text-xs text-emerald-400 font-bold uppercase tracking-widest">Step 1 — Select Base Model to Fine-Tune</span>
-                                <div className="relative">
-                                    <select
-                                        className="appearance-none bg-emerald-900/40 border border-emerald-700/40 text-white px-4 py-2.5 pr-10 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono text-sm transition-all w-full md:w-fit"
-                                        value={selectedVersionId}
-                                        onChange={(e) => setSelectedVersionId(e.target.value)}
-                                        disabled={modelVersions.length === 0}
-                                    >
-                                        {modelVersions.length === 0 ? (
-                                            <option value="">No models available</option>
-                                        ) : (
-                                            modelVersions.map(mv => (
-                                                <option key={mv.id} value={mv.id}>
-                                                    v{mv.version_num} (Round {mv.global_round}) — {new Date(mv.created_at).toLocaleDateString()}
-                                                </option>
-                                            ))
-                                        )}
-                                    </select>
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500 pointer-events-none" />
-                                </div>
-                            </div>
 
-                            {/* Step 2: Your identity */}
+                            {/* Step 1: Your identity */}
                             <div className="flex flex-col gap-1">
-                                <span className="text-xs text-emerald-400 font-bold uppercase tracking-widest">Step 2 — Your Client ID</span>
+                                <span className="text-xs text-emerald-400 font-bold uppercase tracking-widest">Step 1 — Your Client ID</span>
                                 <input
                                     className="bg-emerald-900/40 border border-emerald-700/40 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 placeholder:text-emerald-700 font-mono text-sm transition-all w-full"
                                     value={trainClientId}
@@ -280,9 +241,9 @@ export default function ClientsPage() {
                                 />
                             </div>
 
-                            {/* Step 3: CSV + epochs */}
+                            {/* Step 2: CSV + epochs */}
                             <div className="flex flex-col gap-1">
-                                <span className="text-xs text-emerald-400 font-bold uppercase tracking-widest">Step 3 — Upload Your Dataset &amp; Set Epochs</span>
+                                <span className="text-xs text-emerald-400 font-bold uppercase tracking-widest">Step 2 — Upload Your Dataset &amp; Set Epochs</span>
                                 <input
                                     id="trainFileInput"
                                     type="file"

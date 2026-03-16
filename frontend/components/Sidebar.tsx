@@ -25,8 +25,6 @@ export function Sidebar() {
     const links = [
         { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
         { name: "Clients", href: "/dashboard/clients", icon: Users },
-        { name: "Attack Lab", href: "/dashboard/attack-playground", icon: Swords },
-        { name: "Network", href: "/dashboard/network", icon: Waypoints },
         { name: "Models", href: "/dashboard/models", icon: Network },
         { name: "Collaborate", href: "/dashboard/collaborate", icon: Users2 },
         { name: "Evaluation", href: "/dashboard/evaluation", icon: LineChart },
@@ -61,22 +59,40 @@ export function Sidebar() {
         fetchTokens();
         const interval = setInterval(fetchTokens, 5000);
 
+        // Fetch current user ID from localStorage
+        const userJson = localStorage.getItem("user");
+        const currentUserId = userJson ? JSON.parse(userJson).id : null;
+
         // Fetch initial pending invites
         const fetchInvites = async () => {
-            const res = await supabase.from('collab_sessions').select('id', { count: 'exact' }).eq('recipient_id', 1).eq('status', 'pending');
+            if (!currentUserId) return;
+            const res = await supabase.from('collab_sessions').select('id', { count: 'exact' }).eq('recipient_id', currentUserId).eq('status', 'pending');
             setPendingInvites(res.count || 0);
         };
-        fetchInvites();
+        
+        if (currentUserId) {
+            fetchInvites();
+        }
 
         // Listen for new invites
-        const channel = supabase.channel('sidebar-collab')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'collab_sessions', filter: 'recipient_id=eq.1' }, () => {
-                fetchInvites();
-            }).subscribe();
+        let channel: any;
+        if (currentUserId) {
+            channel = supabase.channel('sidebar-collab')
+                .on('postgres_changes', { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'collab_sessions', 
+                    filter: `recipient_id=eq.${currentUserId}` 
+                }, () => {
+                    fetchInvites();
+                }).subscribe();
+        }
 
         return () => {
             clearInterval(interval);
-            supabase.removeChannel(channel);
+            if (channel) {
+                supabase.removeChannel(channel);
+            }
         };
     }, []);
 

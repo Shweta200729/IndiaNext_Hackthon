@@ -142,7 +142,9 @@ export async function uploadDataset(
     clientId: string,
     file: File,
     epochs: number,
-    versionId?: string
+    versionId?: string,
+    collabSessionId?: string,
+    collabUserId?: number
 ): Promise<{ message: string; epochs: number } | null> {
     try {
         const form = new FormData();
@@ -150,6 +152,9 @@ export async function uploadDataset(
         form.append("file", file);
         form.append("epochs", String(epochs));
         if (versionId) form.append("version_id", versionId);
+        if (collabSessionId) form.append("collab_session_id", collabSessionId);
+        if (collabUserId) form.append("collab_user_id", String(collabUserId));
+
         const res = await fetch(`${BASE}/api/dataset/upload`, { method: "POST", body: form });
         if (!res.ok) return null;
         return res.json();

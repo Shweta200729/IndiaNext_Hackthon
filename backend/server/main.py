@@ -314,22 +314,11 @@ async def init_fl_state() -> None:
             hidden_dims=cfg.hidden_dims(),
         )
 
-    # ── Fallback: always build a default MNIST model so simulation works ──
-    if global_model is None:
-        logger.info(
-            "Building default MNIST-shaped model (1,28,28) / 10 classes "
-            "as fallback so simulations work immediately."
-        )
-        global_model = build_model(
-            input_shape=(1, 28, 28),
-            num_classes=10,
-            hidden_dims=cfg.hidden_dims(),
-        )
-
+    # No fallback build! We wait for real data to determine the model shape.
     if global_model:
         logger.info(f"Global model built: {global_model}")
     else:
-        logger.info("No model built — waiting for client dataset upload.")
+        logger.info("Starting in purely passive mode. No global model built yet.")
 
     # ── 4. Restore checkpoint from Supabase Storage ──────────────────────────
     if storage and global_model:
@@ -344,12 +333,8 @@ async def init_fl_state() -> None:
                     f"Restored checkpoint from Supabase: Version {current_version_num}"
                 )
             except Exception as exc:
-                logger.warning(
-                    f"Checkpoint load from Supabase failed ({exc}). Starting fresh."
-                )
-                await _init_fresh_model()
-        else:
-            await _init_fresh_model()
+                logger.info(f"Supabase checkpoint not found or failed ({exc}). Staying in empty state.")
+                # await _init_fresh_model()
 
     # ── 5. Warm-up: populate in-memory caches from Supabase (survive restarts) ──
     # CRITICAL: each table MUST have its OWN try/except so that one missing
@@ -1655,7 +1640,12 @@ async def set_config(update: ConfigUpdate):
 
 
 def _train_client_background(
-    client_id: str, file_path: str, epochs: int = None, version_id: str = None
+    client_id: str, 
+    file_path: str, 
+    epochs: int = None, 
+    version_id: str = None,
+    collab_session_id: str = None,
+    collab_user_id: int = None
 ):
     """
     Background task triggered by CSV upload from the frontend.
@@ -1892,7 +1882,39 @@ def _train_client_background(
         else:
             logger.info(f"[BG Train] ✅ Detection passed — running aggregation.")
 
-        _run_aggregation_sync([(client_id, client_weights)])
+        if collab_session_id:
+            logger.info(f"[BG Train] Collaboration session detected: {collab_session_id}. Routing to collab-aggregator.")
+            # Mark as submitted in DB (avoids frontend having to make a second API call)
+            if collab_user_id and storage:
+                try:
+                    r = (
+                        storage.supabase.table("collab_sessions")
+                        .select("round_submitted")
+                        .eq("id", collab_session_id)
+                        .single()
+                        .execute()
+                    )
+                    if r.data:
+                        submitted = r.data.get("round_submitted") or []
+                        if str(collab_user_id) not in submitted:
+                            submitted.append(str(collab_user_id))
+                            storage.supabase.table("collab_sessions").update(
+                                {"round_submitted": submitted}
+                            ).eq("id", collab_session_id).execute()
+                except Exception as e:
+                    logger.error(f"[Collab] mark_submitted failed: {e}")
+            
+            # Use the collab-specific aggregation entry point
+            if collab_session_id not in collab_pending_updates:
+                collab_pending_updates[collab_session_id] = []
+            collab_pending_updates[collab_session_id].append((client_id, client_weights))
+            
+            if len(collab_pending_updates[collab_session_id]) >= 2:
+                batch = list(collab_pending_updates[collab_session_id])
+                del collab_pending_updates[collab_session_id]
+                _run_aggregation_collab_sync(batch, collab_session_id)
+        else:
+            _run_aggregation_sync([(client_id, client_weights)])
 
         logger.info(f"[BG Train] ✅ Complete for {client_id}")
 
@@ -1963,19 +1985,24 @@ async def test_dataset(
         }
 
     header_line = lines[0].strip()
+    header_line_lower = header_line.lower()
     
     # Heuristic detection logic
     # Topic 1: Numerical Feature Classification (Target)
-    is_numerical = "Feature_1" in header_line and "Feature_2" in header_line and "Label" in header_line
+    # Detects common feature naming patterns case-insensitively
+    features_present = "feature_1" in header_line_lower or "feature_0" in header_line_lower
+    label_present = "label" in header_line_lower or "target" in header_line_lower
+    
+    is_numerical = features_present or (label_present and len(header_line.split(",")) > 2)
     
     # Topic 2: Car Sales (Incorrect domain)
-    is_car_sales = "Car Model" in header_line or "Mileage" in header_line or "Sell Price" in header_line
+    is_car_sales = "car model" in header_line_lower or "mileage" in header_line_lower or "sell price" in header_line_lower
 
     if is_numerical:
         return {
             "valid": True,
             "detected_topic": "Numerical Feature Classification",
-            "message": "Dataset structure verified: Standard high-dimensional features detected.",
+            "message": "Dataset structure verified: Numerical feature vectors detected.",
         }
     
     if is_car_sales:
@@ -1985,11 +2012,19 @@ async def test_dataset(
             "message": "Topic mismatch: Expected numerical feature vectors, but found car dealership data. Please upload a dataset relevant to the current model version.",
         }
 
-    # Catch-all
+    # Catch-all - if it has multiple columns, we treat it as potentially valid but warn
+    cols = header_line.split(",")
+    if len(cols) >= 2:
+        return {
+            "valid": True,
+            "detected_topic": "Generic Tabular Data",
+            "message": f"Dataset structure verified: Found {len(cols)} columns. Proceeding with adaptive training.",
+        }
+
     return {
         "valid": False,
         "detected_topic": "Unknown / Mixed",
-        "message": f"Topic mismatch: The dataset headers ({header_line[:50]}...) do not match the expected 'Numerical Feature Classification' domain.",
+        "message": f"Topic mismatch: The dataset headers ({header_line[:50]}...) do not match any known domain or feature pattern.",
     }
 
 
@@ -2001,6 +2036,8 @@ async def upload_dataset(
     dataset_url: str = Form(None),
     epochs: int = Form(None),
     version_id: str = Form(None),
+    collab_session_id: str = Form(None),
+    collab_user_id: int = Form(None),
 ):
     """Upload a dataset (file or URL) and trigger background local training.
     Optional `epochs` form field (1-100000) overrides the default BG_TRAIN_EPOCHS.
@@ -2049,7 +2086,7 @@ async def upload_dataset(
         )
 
     background_tasks.add_task(
-        _train_client_background, client_id, file_path, safe_epochs, version_id
+        _train_client_background, client_id, file_path, safe_epochs, version_id, collab_session_id, collab_user_id
     )
     return {
         "message": f"Dataset received. Background training started ({safe_epochs} epoch(s)).",
