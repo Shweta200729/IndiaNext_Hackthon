@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -16,7 +16,6 @@ if not url or not key:
 supabase: Client = create_client(url, key)
 
 from pydantic import BaseModel, EmailStr
-from fastapi import FastAPI, HTTPException
 
 app = FastAPI()
 
