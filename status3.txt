@@ -1,0 +1,42 @@
+On branch main
+Your branch and 'origin/main' have diverged,
+and have 1 and 12 different commits each, respectively.
+  (use "git pull" if you want to integrate the remote branch with yours)
+
+You have unmerged paths.
+  (fix conflicts and run "git commit")
+  (use "git merge --abort" to abort the merge)
+
+Changes to be committed:
+	new file:   26.0.1
+	new file:   backend/.env
+	modified:   backend/.gitignore
+	new file:   backend/check_db.py
+	new file:   backend/data/MNIST/raw/train-images-idx3-ubyte.gz
+	modified:   backend/experiments/evaluation.py
+	modified:   backend/experiments/run_sanity_checks.py
+	modified:   backend/main.py
+	modified:   backend/requirements.txt
+	modified:   backend/server/aggregator.py
+	modified:   backend/server/detection.py
+	new file:   backend/server/fl_simulation_data/models/global_model_round_1.pt
+	modified:   backend/server/main.py
+	modified:   backend/server/model.py
+	modified:   backend/server/storage.py
+	new file:   backend/sql_code/afl_tables.sql
+	new file:   backend/sql_code/user.sql
+	new file:   backend/test_file/test_login.py
+	new file:   backend/test_file/test_signup.py
+	modified:   frontend/.gitignore
+
+Unmerged paths:
+  (use "git add <file>..." to mark resolution)
+	both modified:   frontend/app/page.tsx
+	both modified:   frontend/package-lock.json
+	both modified:   frontend/package.json
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	status.txt
+	status2.txt
+

@@ -1,0 +1,25 @@
+INFO:     Will watch for changes in these directories: ['/Users/macbook/Desktop/Dev_with_innovation/DevHacks/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [78755] using WatchFiles
+/Users/macbook/Desktop/Dev_with_innovation/DevHacks/backend/server/main.py:123: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+/Users/macbook/Desktop/Dev_with_innovation/DevHacks/backend/venv/lib/python3.13/site-packages/fastapi/applications.py:4495: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)
+INFO:     Started server process [78758]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:56067 - "GET /fl/blockchain/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56116 - "GET /clients HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56117 - "GET /metrics HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56156 - "GET /clients HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56157 - "GET /metrics HTTP/1.1" 404 Not Found

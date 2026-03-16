@@ -1,0 +1,8 @@
+Name,Email,Comment
+Alice,alice@example.com,Hello world
+Bob,bob@example.com,=2+2
+Charlie,charlie@example.com,"=SUM(1,1)"
+David,david@example.com,"=HYPERLINK(""https://example.com"",""Click me"")"
+Eve,eve@example.com,+CMD_TEST
+Frank,frank@example.com,@TEST_FORMULA
+Grace,grace@example.com,-10+20

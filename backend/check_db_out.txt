@@ -1,0 +1,62 @@
+﻿[.env] Loaded from C:\Users\user\OneDrive\Desktop\devHacks\backend\.env
+
+[Credentials]
+  SUPABASE URL : https://phdxfjjvsktozvrjbmkj.supabase.co
+  KEY          : SET (eyJhbGciOiJIUzI1NiIs...)
+python : Traceback (most recent 
+call last):
+At line:1 char:1
++ python check_db.py 2>&1 | 
+Out-File -FilePath 
+check_db_out.txt -Encodi ...
++ ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : No 
+   tSpecified: (Traceback (most  
+   recent call last)::String)    
+ [], RemoteException
+    + FullyQualifiedErrorId : Na 
+   tiveCommandError
+ 
+  File "C:\Users\user\OneDrive\De
+sktop\devHacks\backend\check_db.p
+y", line 40, in <module>
+    print("\n[Connection] \u2713 
+Supabase client created")
+  File "C:\Users\user\AppData\Loc
+al\Programs\Python\Python311\Lib\
+encodings\cp1252.py", line 19, 
+in encode
+    return codecs.charmap_encode(
+input,self.errors,encoding_table)
+[0]
+           ^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' 
+codec can't encode character 
+'\u2713' in position 15: 
+character maps to <undefined>
+
+During handling of the above 
+exception, another exception 
+occurred:
+
+Traceback (most recent call 
+last):
+  File "C:\Users\user\OneDrive\De
+sktop\devHacks\backend\check_db.p
+y", line 42, in <module>
+    print(f"\n\u274c Could not 
+create Supabase client: {e}")
+  File "C:\Users\user\AppData\Loc
+al\Programs\Python\Python311\Lib\
+encodings\cp1252.py", line 19, 
+in encode
+    return codecs.charmap_encode(
+input,self.errors,encoding_table)
+[0]
+           ^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' 
+codec can't encode character 
+'\u274c' in position 2: 
+character maps to <undefined>
