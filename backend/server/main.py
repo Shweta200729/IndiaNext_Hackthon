@@ -62,23 +62,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 
-import torch
-from torch.utils.data import DataLoader
-
-# ── Configuration (single source of truth) ─────────────────────────────────
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from config.settings import FLSettings, settings as cfg
-
-# ── Model factory ────────────────────────────────────────────────────────────
-from models.model_factory import build_model, FLModel
-
-# ── Universal dataset loader ─────────────────────────────────────────────────
-from data.dataset_loader import load_dataset
-
-# ── Server-side ML modules ────────────────────────────────────────────────────
-from server.storage import SupabaseManager
-from server.detection import detect_update
-from server.aggregator import aggregate
+# ── Lazy Imports for Performance ──────────────────────────────────────────────
+# We move torch, torchvision, and other heavy imports inside their respective
+# functions or background tasks. This allows the FastAPI app to start and
+# respond to health checks / metrics requests immediately, even on cold-start.
 
 
 # ── Import Blockchain Rules ────────────────────────────────────────────────
@@ -120,7 +107,7 @@ except Exception as _bc_err:
 
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
-from experiments.evaluation import evaluate_model
+# Evaluation import is moved inside _aggregate_and_update
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -163,16 +150,19 @@ app.add_middleware(
 # Global mutable state  (all writes go through model_lock)
 # ---------------------------------------------------------------------------
 
-global_model: Optional[FLModel] = None
+global_model: Optional[Any] = None
 model_lock: asyncio.Lock = asyncio.Lock()
-storage: Optional[SupabaseManager] = None
-val_loader: Optional[DataLoader] = None
-pending_updates: List[Tuple[str, Dict[str, torch.Tensor]]] = []
-collab_pending_updates: Dict[str, List[Tuple[str, Dict[str, torch.Tensor]]]] = {}
+storage: Optional[Any] = None
+val_loader: Optional[Any] = None
+pending_updates: List[Tuple[str, Any]] = []
+collab_pending_updates: Dict[str, List[Tuple[str, Any]]] = {}
 
 # Runtime-mutable config mirror — updated via POST /admin/config
 # Points to the singleton; only the DP/queue fields are hot-swappable.
-runtime_cfg: FLSettings = cfg  # replaced by ConfigUpdate POST
+try:
+    from config.settings import settings as runtime_cfg
+except Exception:
+    runtime_cfg = None
 
 current_version_id: Optional[str] = None
 current_version_num: int = 0
@@ -251,54 +241,54 @@ def _safe_float(v: float, fallback: float = 0.0) -> Optional[float]:
 
 
 def _try_init_storage() -> None:
-    """Best-effort storage init at module import time.
-    The real init happens in init_fl_state() called by the root app startup.
-    This is a safety net for the case where the sub-app IS run standalone."""
+    """Best-effort storage init at module import time."""
     global storage
     if storage is not None:
         return
     try:
+        from server.storage import SupabaseManager
         storage = SupabaseManager()
         logger.info("[Storage] SupabaseManager initialised at import time.")
     except Exception as exc:
-        logger.warning(
-            f"[Storage] Import-time init failed ({exc}) — will retry on startup."
-        )
+        logger.warning(f"[Storage] Import-time init failed: {exc}")
 
 
 _try_init_storage()
 
 
-# ---------------------------------------------------------------------------
-# Startup — called BOTH by on_event below (standalone mode) AND by the
-# root app's startup hook (sub-app mode via app.mount).
-# ---------------------------------------------------------------------------
-
-
 async def init_fl_state() -> None:
-    """Full server initialisation: Storage → Dataset → Model → Checkpoint → Warm-up.
-    Call this from whichever startup hook actually fires.
-    """
-    global storage, global_model, val_loader, current_version_id, current_version_num
+    """Starts the FL state initialization in a background task so the server
+    can begin accepting requests immediately."""
+    asyncio.create_task(_init_fl_state_actual())
 
+
+async def _init_fl_state_actual():
+    """Internal: Performs the heavy lifting of model loading and caching."""
+    global storage, global_model, val_loader, current_version_id, current_version_num
+    
+    # Lazy imports inside the background task for fast cold-start
+    try:
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        from config.settings import settings as cfg
+        from models.model_factory import build_model
+        from data.dataset_loader import load_dataset
+        from server.storage import SupabaseManager
+        import torch
+    except Exception as e:
+        logger.error(f"[Startup] Lazy imports failed: {e}")
+        return
+
+    logger.info("[Startup] Initializing FL state in background...")
+    
     # -- 1. Storage --------------------------------------------------------
-    _sb_url = os.environ.get("SUPABASE", "")
-    _sb_key = os.environ.get("SUPABASE_ROLE_KEY") or os.environ.get(
-        "SUPABASE_ANON_KEY", ""
-    )
-    logger.info(
-        f"[Startup] SUPABASE env = '{_sb_url[:40]}' key={'SET' if _sb_key else 'MISSING'}"
-    )
     if storage is None:  # may already be set from import-time init
         try:
             storage = SupabaseManager()
             logger.info("[Startup] SupabaseManager initialised OK")
         except Exception as exc:
             logger.error(f"[Startup] SupabaseManager FAILED: {exc}")
-    else:
-        logger.info("[Startup] SupabaseManager already initialised (import-time).")
 
-    # ── 2 & 3. Dataset → model (only if DATASET_NAME is configured) ─────────
+    # -- 2 & 3. Dataset -> model -------------------------------------------
     ssl._create_default_https_context = ssl._create_unverified_context
 
     if cfg.DATASET_NAME.strip():
@@ -313,10 +303,6 @@ async def init_fl_state() -> None:
             input_shape = None
             num_classes = None
     else:
-        logger.info(
-            "DATASET_NAME is empty — skipping auto-download. "
-            "Model will be built when a client uploads data."
-        )
         input_shape = None
         num_classes = None
 
@@ -327,88 +313,57 @@ async def init_fl_state() -> None:
             hidden_dims=cfg.hidden_dims(),
         )
 
-    # No fallback build! We wait for real data to determine the model shape.
     if global_model:
         logger.info(f"Global model built: {global_model}")
     else:
-        logger.info("Starting in purely passive mode. No global model built yet.")
+        logger.info("Passive mode. No global model built yet.")
 
-    # ── 4. Restore checkpoint from Supabase Storage ──────────────────────────
+    # -- 4. Restore checkpoint ---------------------------------------------
     if storage and global_model:
-        latest = storage.get_latest_version()
-        if latest["version_num"] > 0 and latest["file_path"]:
-            try:
-                ckpt = storage.download_model(latest["file_path"])
+        try:
+            latest = await asyncio.to_thread(storage.get_latest_version)
+            if latest and latest.get("version_num", 0) > 0 and latest.get("file_path"):
+                ckpt = await asyncio.to_thread(storage.download_model, latest["file_path"])
                 global_model.set_weights(ckpt)
                 current_version_num = latest["version_num"]
                 current_version_id = latest["id"]
-                logger.info(
-                    f"Restored checkpoint from Supabase: Version {current_version_num}"
-                )
-            except Exception as exc:
-                logger.info(f"Supabase checkpoint not found or failed ({exc}). Staying in empty state.")
-                # await _init_fresh_model()
+                logger.info(f"Restored Version {current_version_num} from DB.")
+        except Exception as exc:
+            logger.info(f"Restore failed or table empty ({exc}).")
 
-    # ── 5. Warm-up: populate in-memory caches from Supabase (survive restarts) ──
-    # CRITICAL: each table MUST have its OWN try/except so that one missing
-    # table (e.g. train_history not yet created) does NOT abort loading the others.
+    # -- 5. Warm-up caches -------------------------------------------------
     if storage:
-        # Pre-load client UUID → name cache so reverse lookups work immediately
         try:
-            _cl = storage.supabase.table("clients").select("id,client_name").execute()
+            _cl = await asyncio.to_thread(lambda: storage.supabase.table("clients").select("id,client_name").execute())
             for _row in _cl.data or []:
                 storage._client_id_cache[_row["client_name"]] = _row["id"]
-            logger.info(
-                f"[Warm-up] Cached {len(storage._client_id_cache)} client UUID mappings"
-            )
         except Exception as _e:
-            logger.warning(f"[Warm-up] clients cache: {_e}")
+            logger.warning(f"[Warm-up] clients cache failed: {_e}")
 
-        try:
-            _ev = storage.read_recent_evaluations()
-            if _ev:
-                _mem_evaluations.extend(_ev)
-                logger.info(f"[Warm-up] Loaded {len(_ev)} evaluation rows")
-        except Exception as _e:
-            logger.warning(f"[Warm-up] evaluations: {_e}")
+        warmup_tasks = [
+            ("evaluations", storage.read_recent_evaluations, _mem_evaluations),
+            ("aggregations", storage.read_recent_aggregations, _mem_aggregations),
+            ("client_updates", storage.read_recent_client_updates, _mem_client_updates),
+            ("versions", storage.read_recent_versions, _mem_versions),
+            ("train_history", storage.read_recent_train_history, _mem_train_history),
+        ]
+        for name, func, target in warmup_tasks:
+            try:
+                rows = await asyncio.to_thread(func)
+                if rows:
+                    target.extend(rows)
+                    logger.info(f"[Warm-up] Loaded {len(rows)} {name} rows")
+            except Exception as _e:
+                logger.warning(f"[Warm-up] {name} failed: {_e}")
 
-        try:
-            _ag = storage.read_recent_aggregations()
-            if _ag:
-                _mem_aggregations.extend(_ag)
-                logger.info(f"[Warm-up] Loaded {len(_ag)} aggregation rows")
-        except Exception as _e:
-            logger.warning(f"[Warm-up] aggregations: {_e}")
-
-        try:
-            _cu = storage.read_recent_client_updates()
-            if _cu:
-                _mem_client_updates.extend(_cu)
-                logger.info(f"[Warm-up] Loaded {len(_cu)} client update rows")
-        except Exception as _e:
-            logger.warning(f"[Warm-up] client_updates: {_e}")
-
-        try:
-            _vr = storage.read_recent_versions()
-            if _vr:
-                _mem_versions.extend(_vr)
-                logger.info(f"[Warm-up] Loaded {len(_vr)} model version rows")
-        except Exception as _e:
-            logger.warning(f"[Warm-up] versions: {_e}")
-
-        try:
-            _th = storage.read_recent_train_history()
-            if _th:
-                _mem_train_history.extend(_th)
-                logger.info(f"[Warm-up] Loaded {len(_th)} train history rows")
-        except Exception as _e:
-            logger.warning(f"[Warm-up] train_history (run SQL if table missing): {_e}")
+    logger.info("[Startup] FL state background initialization complete.")
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Fires only when fl_app is run standalone. In sub-app mode the root
-    app's startup hook calls init_fl_state() directly."""
+    """Fires only when fl_app is run standalone."""
+    # We call init_fl_state() but we don't await if we want it background.
+    # However, for consistency with mounted mode, we keep it as a call.
     await init_fl_state()
 
 
@@ -453,6 +408,8 @@ async def _aggregate_and_update(updates: List[Tuple[str, Dict]]) -> Dict[str, fl
     """
     global current_version_num, current_version_id
 
+    from server.aggregator import aggregate
+
     weight_dicts = [w for _, w in updates]
     n = len(weight_dicts)
 
@@ -470,6 +427,7 @@ async def _aggregate_and_update(updates: List[Tuple[str, Dict]]) -> Dict[str, fl
     eval_metrics: Optional[Dict[str, float]] = None
     if val_loader is not None:
         try:
+            from experiments.evaluation import evaluate_model
             eval_metrics = evaluate_model(global_model, val_loader, device=cfg.DEVICE)
         except Exception as eval_exc:
             logger.warning(f"[Aggregation] evaluate_model failed: {eval_exc}")
@@ -676,16 +634,21 @@ async def get_global_model(session_id: Optional[str] = None):
     """Clients download current global model weights (.pt binary).
     If session_id is provided, fetches the shared model for that Collab Session.
     """
+    import torch
+
     weights = None
 
     if session_id and storage:
         try:
-            r = (
-                storage.supabase.table("collab_sessions")
-                .select("shared_version_id")
-                .eq("id", session_id)
-                .single()
-                .execute()
+            # Wrap blocking Supabase call in a thread to keep event loop free
+            r = await asyncio.to_thread(
+                lambda: (
+                    storage.supabase.table("collab_sessions")
+                    .select("shared_version_id")
+                    .eq("id", session_id)
+                    .single()
+                    .execute()
+                )
             )
             svid = (
                 r.data.get("shared_version_id")
@@ -693,22 +656,24 @@ async def get_global_model(session_id: Optional[str] = None):
                 else None
             )
             if svid:
-                vr = (
-                    storage.supabase.table("model_versions")
-                    .select("file_path")
-                    .eq("id", svid)
-                    .single()
-                    .execute()
+                vr = await asyncio.to_thread(
+                    lambda: (
+                        storage.supabase.table("model_versions")
+                        .select("file_path")
+                        .eq("id", svid)
+                        .single()
+                        .execute()
+                    )
                 )
                 fp = (
                     vr.data.get("file_path")
                     if (vr.data and "file_path" in vr.data)
                     else None
                 )
-                # Download from Supabase Storage (bucket key, not local path)
+                # Download (network I/O) also goes in a thread
                 if fp:
                     try:
-                        weights = storage.download_model(fp)
+                        weights = await asyncio.to_thread(storage.download_model, fp)
                     except Exception as dl_e:
                         logger.warning(
                             f"[Model] Collab download failed ({dl_e}) — "
