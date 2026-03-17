@@ -1,4 +1,5 @@
 import os
+import asyncio
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -104,7 +105,9 @@ async def signup(request: SignupRequest):
             "phone": request.phone,
             "password_hash": hashed_password,
         }
-        response = supabase.table("users").insert(user_data).execute()
+        response = await asyncio.to_thread(
+            lambda: supabase.table("users").insert(user_data).execute()
+        )
 
         # Auto-create blockchain wallet + stake for the new user
         # This populates the Web3 Token Economy table on the dashboard
@@ -132,8 +135,8 @@ async def signup(request: SignupRequest):
 async def login(request: LoginRequest):
     try:
         # Fetch user by email
-        response = (
-            supabase.table("users").select("*").eq("email", request.email).execute()
+        response = await asyncio.to_thread(
+            lambda: supabase.table("users").select("*").eq("email", request.email).execute()
         )
         users = response.data
 

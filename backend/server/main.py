@@ -294,7 +294,7 @@ async def _init_fl_state_actual():
     if cfg.DATASET_NAME.strip():
         try:
             logger.info(f"Loading dataset '{cfg.DATASET_NAME}' …")
-            ds_result = load_dataset(cfg)
+            ds_result = await asyncio.to_thread(load_dataset, cfg)
             input_shape = ds_result["input_shape"]
             num_classes = ds_result["num_classes"]
             val_loader = ds_result["val_dataloader"]
@@ -307,7 +307,8 @@ async def _init_fl_state_actual():
         num_classes = None
 
     if input_shape and num_classes:
-        global_model = build_model(
+        global_model = await asyncio.to_thread(
+            build_model,
             input_shape=input_shape,
             num_classes=num_classes,
             hidden_dims=cfg.hidden_dims(),
