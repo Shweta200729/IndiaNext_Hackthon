@@ -244,11 +244,16 @@ def query_rag(question: str, extra_docs: Optional[list] = None) -> str:
     """
     # ── Level 1: full RAG with Groq LLM ─────────────────────────────────────
     try:
-        retriever = get_retriever(extra_docs)
-        relevant_docs = retriever.get_relevant_documents(question)
-
-        if not relevant_docs:
-            context = "\n\n".join(PLATFORM_DOCS[:3])
+        try:
+            retriever = get_retriever(extra_docs)
+            relevant_docs = retriever.get_relevant_documents(question)
+            if not relevant_docs:
+                context = "\n\n".join(PLATFORM_DOCS[:3])
+            else:
+                context = "\n\n".join(doc.page_content for doc in relevant_docs)
+        except Exception as e:
+            logger.warning(f"[RAG] Skipping vectorstore, using basic docs context: {e}")
+            context = "\n\n".join(PLATFORM_DOCS[:5])
         else:
             context = "\n\n".join(doc.page_content for doc in relevant_docs)
 

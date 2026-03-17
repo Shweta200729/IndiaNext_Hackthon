@@ -412,6 +412,7 @@ async def _aggregate_and_update(updates: List[Tuple[str, Dict]]) -> Dict[str, fl
     global current_version_num, current_version_id
 
     from server.aggregator import aggregate
+    from config.settings import settings as cfg
 
     weight_dicts = [w for _, w in updates]
     n = len(weight_dicts)
@@ -1653,7 +1654,10 @@ def _train_client_background(
             UniversalCSVDataset,
             train_on_csv,
         )
-        from torch.utils.data import random_split as _random_split
+        from torch.utils.data import random_split as _random_split, DataLoader
+        import torch
+        from config.settings import settings as cfg
+        from models.model_factory import build_model
 
         # ── Step 1: Detect CSV shape ─────────────────────────────────────────
         has_header, num_features = _sniff_csv(file_path)
