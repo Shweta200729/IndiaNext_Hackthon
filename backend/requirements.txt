@@ -1,9 +1,9 @@
 # Core backend
-fastapi==0.115.8
+fastapi>=0.111.0,<0.116.0
 uvicorn[standard]==0.34.0
 python-dotenv==1.2.1
 python-multipart
-pydantic[email]>=2.11.7
+pydantic[email]>=2.0.0,<3.0.0
 pydantic-settings>=2.0.0
 groq>=0.13.0
 
@@ -11,7 +11,23 @@ groq>=0.13.0
 supabase==2.28.0
 bcrypt
 
-# ML - Federated Learning
+# Testing
+pytest
+pytest-asyncio
+
+# NOTE: Heavy ML dependencies (torch, langchain, mlflow, chromadb, etc.)
+# are in requirements-ml.txt — install those separately for local ML features.
+# Render deploys using ONLY this file for a lightweight, fast build.
+# ── Heavy ML Dependencies ─────────────────────────────────────────────────────
+# Install AFTER requirements.txt for local development with full ML features.
+# Usage: pip install -r requirements-ml.txt
+#
+# These are NOT installed on Render (free tier cannot handle the size).
+# On Render, ML endpoints (/fl/simulate, /fl/model, /fl/update) will return
+# 503 with a helpful message. All auth + dashboard API endpoints still work.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Federated Learning
 torch>=2.0.0
 torchvision
 
@@ -26,7 +42,3 @@ kaggle>=1.6.0
 
 # Experiment Tracking
 mlflow>=2.13.0
-
-# Testing
-pytest
-pytest-asyncio

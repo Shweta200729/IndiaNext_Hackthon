@@ -130,17 +130,19 @@ app = FastAPI(
 _allowed_origins = [
     "http://localhost:3000",
     "http://localhost:3001",
-    "https://india-next-hackthon-y54c.vercel.app", # User's Vercel deployment
+    "https://india-next-hackthon-y54c.vercel.app",   # User's Vercel deployment
+    "https://indianext-hackthon.onrender.com",         # Render backend self-origin
 ]
 
 # Allow overriding via environment variable (comma-separated list)
 env_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 if env_origins:
-    _allowed_origins.extend([o.strip() for o in env_origins.split(",")])
+    _allowed_origins.extend([o.strip() for o in env_origins.split(",") if o.strip()])
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",   # All Vercel preview deploys
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1280,7 +1282,7 @@ async def download_global_model(version_id: str = None):
 class SimulationRequest(BaseModel):
     client_name: str
     is_malicious: bool = False
-    malicious_multiplier: float = cfg.NORM_THRESHOLD * 3
+    malicious_multiplier: float = 3000.0  # Default substituted for cfg.NORM_THRESHOLD * 3
     attack_type: str = "gaussian"  # "gaussian" | "label_flip" | "sign_flip"
     noise_intensity: float = 1.0  # multiplier scaling factor (0.0 – 1.0+)
     label_flip_ratio: float = 1.0  # fraction of labels to flip  (0.0 – 1.0)
@@ -1396,12 +1398,12 @@ async def run_simulation(background_tasks: BackgroundTasks, req: SimulationReque
     return {"status": "Simulation started in background."}
 
 
-async def _async_get_weights() -> Dict[str, torch.Tensor]:
+async def _async_get_weights() -> Dict[str, Any]:
     async with model_lock:
         return global_model.get_weights()
 
 
-async def _enqueue_and_aggregate(client_id: str, weights: Dict[str, torch.Tensor]):
+async def _enqueue_and_aggregate(client_id: str, weights: Dict[str, Any]):
     global pending_updates
     async with model_lock:
         pending_updates.append((client_id, weights))
@@ -1753,7 +1755,7 @@ def _train_client_background(
 
         if gw is None:
 
-            def _get_weights_sync() -> Dict[str, torch.Tensor]:
+            def _get_weights_sync() -> Dict[str, Any]:
                 async def _inner():
                     async with model_lock:
                         return global_model.get_weights() if global_model else None

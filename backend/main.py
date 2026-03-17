@@ -20,11 +20,21 @@ from pydantic import BaseModel, EmailStr
 
 app = FastAPI()
 
+_root_allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://india-next-hackthon-y54c.vercel.app",
+]
+_env_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+if _env_origins:
+    _root_allowed_origins.extend([o.strip() for o in _env_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_origins=_root_allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )

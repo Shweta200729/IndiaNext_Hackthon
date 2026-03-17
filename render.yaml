@@ -1,19 +1,21 @@
 services:
-  # Backend - FastAPI
+  # Backend - FastAPI (root app with auth + /fl mount)
   - type: web
     name: indianext-backend
     env: python
     buildCommand: "pip install -r backend/requirements.txt"
-    startCommand: "cd backend && uvicorn server.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.0
+        value: 3.11.0
       - key: SUPABASE
         fromConfig: true
       - key: SUPABASE_ROLE_KEY
         fromConfig: true
       - key: GROQ_API_KEY
         fromConfig: true
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://india-next-hackthon-y54c.vercel.app"
 
   # Frontend - Next.js
   - type: web
@@ -23,7 +25,10 @@ services:
     startCommand: "cd frontend && npm run start"
     envVars:
       - key: NEXT_PUBLIC_BACKEND_URL
-        fromContext: backend_url
+        fromService:
+          name: indianext-backend
+          type: web
+          property: host
       - key: NEXT_PUBLIC_SUPABASE_URL
         fromConfig: true
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
