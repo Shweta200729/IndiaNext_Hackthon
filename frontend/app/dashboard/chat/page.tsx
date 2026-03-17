@@ -1,8 +1,10 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BACKEND_URL } from "@/lib/api";
 import { Bot, Send, User, RefreshCcw, Database, FlaskConical, Zap } from "lucide-react";
 
-const FL_BASE = "http://localhost:8000/fl";
+const FL_BASE = `${BACKEND_URL}/fl`;
 
 interface Message {
     role: "user" | "assistant";

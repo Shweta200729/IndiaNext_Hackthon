@@ -8,7 +8,8 @@
  *  - Types are enforced at the boundary.
  */
 
-const BASE = "http://localhost:8000/fl";
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const BASE = `${BACKEND_URL}/fl`;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

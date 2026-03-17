@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BACKEND_URL } from "@/lib/api";
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, Legend, BarChart, Bar, Area, AreaChart,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { fetchMetrics, MetricsResponse, startPolling } from "@/lib/api";
 
-const BASE = "http://localhost:8000/fl";
+const BASE = `${BACKEND_URL}/fl`;
 
 interface TrainPoint {
     label: string;

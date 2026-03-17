@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BACKEND_URL } from "@/lib/api";
 import {
     Swords, Zap, ShieldAlert, Activity, TrendingDown, AlertTriangle,
     CheckCircle2, Skull, FlaskConical, ArrowRight
@@ -65,7 +66,7 @@ export default function AttackPlaygroundPage() {
     // ─── live probe on slider change ─────────────────────────────────────────
     const runProbe = useCallback(async (noiseLevel: number, type: string) => {
         try {
-            const res = await fetch("http://localhost:8000/fl/attack-probe", {
+            const res = await fetch(`${BACKEND_URL}/fl/attack-probe`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ noise_level: noiseLevel, attack_type: type }),
@@ -88,7 +89,7 @@ export default function AttackPlaygroundPage() {
     // ─── fetch wallet snapshot ───────────────────────────────────────────────
     const fetchWallet = async (): Promise<{ balance: number; staked: number } | null> => {
         try {
-            const res = await fetch("http://localhost:8000/fl/blockchain/status");
+            const res = await fetch(`${BACKEND_URL}/fl/blockchain/status`);
             if (res.ok) {
                 const data = await res.json();
                 const w = data.wallets?.find((w: any) => w.client_id === userName);
@@ -114,7 +115,7 @@ export default function AttackPlaygroundPage() {
         setWalletAfter(null);
 
         try {
-            const res = await fetch("http://localhost:8000/fl/simulate", {
+            const res = await fetch(`${BACKEND_URL}/fl/simulate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

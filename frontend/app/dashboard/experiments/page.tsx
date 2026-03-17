@@ -1,8 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BACKEND_URL } from "@/lib/api";
 import { FlaskConical, RefreshCw, TrendingUp, User, Database, Hash } from "lucide-react";
 
-const FL_BASE = "http://localhost:8000/fl";
+const FL_BASE = `${BACKEND_URL}/fl`;
 
 interface Experiment {
     run_id: string | null;

@@ -7,6 +7,8 @@ import React, {
     useCallback,
     useMemo,
 } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { BACKEND_URL } from "@/lib/api";
 import { X } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -45,7 +47,7 @@ interface GraphLink {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const API_BASE = "http://localhost:8000/fl";
+const API_BASE = `${BACKEND_URL}/fl`;
 const POLL_MS = 4000;
 
 const STATUS_COLORS: Record<string, string> = {

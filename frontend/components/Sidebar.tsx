@@ -18,6 +18,7 @@ import {
     Bot,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { BACKEND_URL } from "@/lib/api";
 
 export function Sidebar() {
     const pathname = usePathname();
@@ -42,7 +43,7 @@ export function Sidebar() {
     useEffect(() => {
         const fetchTokens = async () => {
             try {
-                const res = await fetch("http://localhost:8000/fl/clients");
+                const res = await fetch(`${BACKEND_URL}/fl/clients`);
                 if (res.ok) {
                     const json = await res.json();
                     let total = 0;

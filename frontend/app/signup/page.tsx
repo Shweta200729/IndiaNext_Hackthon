@@ -29,7 +29,8 @@ export default function SignupPage() {
         setLoading(true);
 
         try {
-            const res = await fetch("http://localhost:8000/api/auth/signup", {
+            const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+            const res = await fetch(`${baseUrl}/api/auth/signup`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

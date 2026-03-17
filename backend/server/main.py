@@ -138,9 +138,22 @@ app = FastAPI(
     description="Dataset-agnostic, model-agnostic FL server.",
 )
 
+# ── CORS Configuration ───────────────────────────────────────────────
+# In production, we should specify allowed origins for security.
+_allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://india-next-hackthon-y54c.vercel.app", # User's Vercel deployment
+]
+
+# Allow overriding via environment variable (comma-separated list)
+env_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+if env_origins:
+    _allowed_origins.extend([o.strip() for o in env_origins.split(",")])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

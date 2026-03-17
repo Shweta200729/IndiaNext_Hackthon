@@ -1,8 +1,10 @@
 "use client";
 import React, { useState } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { BACKEND_URL } from "@/lib/api";
 import { Database, Search, ExternalLink, Image, FileText, BarChart3, Loader2 } from "lucide-react";
 
-const FL_BASE = "http://localhost:8000/fl";
+const FL_BASE = `${BACKEND_URL}/fl`;
 
 const TASK_OPTIONS = [
     { label: "Computer Vision", value: "computer vision", icon: Image, color: "bg-blue-50 border-blue-200 text-blue-700" },

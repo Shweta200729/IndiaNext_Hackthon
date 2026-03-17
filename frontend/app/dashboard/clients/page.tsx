@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BACKEND_URL } from "@/lib/api";
 import {
     PlayCircle, ShieldAlert, CopyCheck, AlertTriangle,
     Upload, Download, Users, CheckCircle2, Clock, Cpu, ChevronDown
@@ -86,7 +87,7 @@ export default function ClientsPage() {
 
     const fetchClientUpdates = async () => {
         try {
-            const res = await fetch("http://localhost:8000/fl/clients");
+            const res = await fetch(`${BACKEND_URL}/fl/clients`);
             if (res.ok) {
                 const json = await res.json();
                 setClientUpdates(json.data || []);
@@ -106,7 +107,7 @@ export default function ClientsPage() {
         setIsSimulating(true);
         setSimMessage({ type: "info", msg: "Firing simulation..." });
         try {
-            const res = await fetch("http://localhost:8000/fl/simulate", {
+            const res = await fetch(`${BACKEND_URL}/fl/simulate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ client_name: simName, is_malicious: isMalicious, malicious_multiplier: 50.0 }),
